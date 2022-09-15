@@ -1,0 +1,65 @@
+version: 2.1
+
+workflows:
+    version: 2
+    build_and_test:
+      jobs:
+        - test:
+            context: AWS
+        - deploy:
+            context: AWS
+            requires:
+              - test
+            filters:
+              branches:
+                only: master
+
+commands:
+  install_sam:
+    steps:
+    - run: curl -sLo /tmp/sam.zip https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+    - run: unzip /tmp/sam.zip -d /tmp/sam
+    - run: sudo /tmp/sam/install
+  install_terraform:
+    steps:
+    - run: curl -sLo terraform/terraform.zip https://releases.hashicorp.com/terraform/1.1.6/terraform_1.1.6_linux_amd64.zip
+    - run: unzip terraform/terraform.zip -d terraform
+  init_terraform:
+    steps:
+    - run: cd terraform && ./terraform init -input=false
+  plan_or_apply_terraform:
+    parameters:
+      command:
+        description: the terraform command to execute
+        type: string
+    steps:
+    - run: cd terraform && ./terraform <<parameters.command>>
+
+jobs:
+  test:
+    machine:
+      image: ubuntu-2004:202111-01
+    steps:
+      - checkout
+      - run: cd movies_lambda && go mod download && go test -v ./...
+      - install_sam
+      - run: make build
+      - persist_to_workspace:
+          root: ./.aws-sam/build
+          paths:
+            - MoviesLambdaFunction/*
+      - install_terraform
+      - init_terraform
+      - plan_or_apply_terraform:
+          command: plan
+  deploy:
+    machine:
+      image: ubuntu-2004:202111-01
+    steps:
+      - checkout
+      - attach_workspace:
+            at: .aws-sam/build
+      - install_terraform
+      - init_terraform
+      - plan_or_apply_terraform:
+          command: apply -input=false -auto-approve
