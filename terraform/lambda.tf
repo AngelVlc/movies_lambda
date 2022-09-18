@@ -7,6 +7,8 @@ resource "aws_lambda_function" "lambda" {
   runtime = "go1.x"
   handler = "movies_lambda"
 
+  timeout = 2
+
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
 
   role = aws_iam_role.lambda_execution_role.arn
